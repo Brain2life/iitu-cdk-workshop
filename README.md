@@ -1,4 +1,4 @@
-# iitu-cdk-workshop
+# AWS Cloud Club IITU CDK Workshop
 
 This repository represents AWS Cloud Development Kit (CDK) Immersion Day Workshop to run in your own AWS account. The workshop is organized by [AWS Cloud Club at IITU in Almaty, Kazakhstan](https://www.meetup.com/aws-cloud-club-at-iitu/).
 
@@ -130,4 +130,218 @@ cdk destroy [STACKS..]
 8. To create a new, empty CDK project from a template:
 ```bash
 cdk init [TEMPLATE_NAME] --language [PROGRAMMING_LANGUAGE]
+```
+
+## How CDK works?
+
+CDK code compiles into CloudFormation YAML/JSON template files. Next, CloudFormation deploys the compiled files into AWS.
+
+![](./img/aws_cdk_how_it_workds.png)
+
+To synthesize AWS CloudFormation template file from your CDK code, go to the root of your project and run:
+```bash
+cdk synth
+```
+
+In the CLI output you should see the CloudFormation Template that will be deployed into AWS:
+```yaml
+esources:
+  CdkWorkshopQueue50D9D426:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 300
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      aws:cdk:path: CdkWorkshopStack/CdkWorkshopQueue/Resource
+  CdkWorkshopQueuePolicyAF2494A5:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: sqs:SendMessage
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  Ref: CdkWorkshopTopicD368A42F
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Resource:
+              Fn::GetAtt:
+                - CdkWorkshopQueue50D9D426
+                - Arn
+        Version: "2012-10-17"
+      Queues:
+        - Ref: CdkWorkshopQueue50D9D426
+    Metadata:
+      aws:cdk:path: CdkWorkshopStack/CdkWorkshopQueue/Policy/Resource
+  CdkWorkshopQueueCdkWorkshopStackCdkWorkshopTopicD7BE96438B5AD106:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sqs
+      TopicArn:
+        Ref: CdkWorkshopTopicD368A42F
+      Endpoint:
+        Fn::GetAtt:
+          - CdkWorkshopQueue50D9D426
+          - Arn
+    DependsOn:
+      - CdkWorkshopQueuePolicyAF2494A5
+    Metadata:
+      aws:cdk:path: CdkWorkshopStack/CdkWorkshopQueue/CdkWorkshopStackCdkWorkshopTopicD7BE9643/Resource
+  CdkWorkshopTopicD368A42F:
+    Type: AWS::SNS::Topic
+    Metadata:
+      aws:cdk:path: CdkWorkshopStack/CdkWorkshopTopic/Resource
+  CDKMetadata:
+    Type: AWS::CDK::Metadata
+    Properties:
+      Analytics: v2:deflate64:H4sIAAAAAAAA/1WO0QrCMAxFv8X3NjpBwef9gG6+y9ZWyDab2bSKlP676wqCL8m5hwvJHg4n2G26N0ulRzlhD7H1nRrFom6RnwzxEkwwor7bAus804Tq85MlJsF26behZ+Vw9kg2N/7ylWZU2a6QUsbGMAWn1hs1WY25mYQlbWDg7as6QpW/HBhRumA9Pgw0ZX8B5//lbcEAAAA=
+    Metadata:
+      aws:cdk:path: CdkWorkshopStack/CDKMetadata/Default
+    Condition: CDKMetadataAvailable
+Conditions:
+  CDKMetadataAvailable:
+    Fn::Or:
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - af-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-northeast-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ap-southeast-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - ca-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - cn-north-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - cn-northwest-1
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-central-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-north-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-2
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - eu-west-3
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - me-south-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - sa-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-east-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-east-2
+      - Fn::Or:
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-west-1
+          - Fn::Equals:
+              - Ref: AWS::Region
+              - us-west-2
+Parameters:
+  BootstrapVersion:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /cdk-bootstrap/hnb659fds/version
+    Description: Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]
+```
+
+You can use this command to inspect your infrastructure changes before deploying them into AWS Cloud. For convenience save the output into separate file for inspection:
+```bash
+cdk synth > cdk_cfn_output.yaml
+```
+
+## Bootstrapping an Environment
+
+Before deploying any resources into AWS Cloud with CDK, first you have to prepare the [**bootstrap environment**](https://docs.aws.amazon.com/cdk/v2/guide/bootstrapping.html) for CDK. This environment is comprised of foundational AWS components required for CDK functioning:
+- **S3 bucket** to store CloudFormation Templates
+- **AWS ECR Registry** to store Docker container images
+- **IAM Roles and policies** for CDK to execute deployments in your AWS account
+
+To install the bootstrap stack run the following command:
+```bash
+cdk bootstrap
+```
+
+![](./img/cdk_bootstrap_stack.png)
+
+> [!CAUTION]   
+> Running `cdk bootstrap` command will use your **AWS CLI's default profile credentials**.     
+> If you need to specify specific AWS region or AWS CLI profile for use, you have to define them in `/bin/cdk-workshop.ts` entry execution file  
+
+Unfortunately, **CDK for now doesn't have a dedicated command to delete CDK boostrap stack, so you have to manually delete all the created resources in your AWS Console**. For S3 bucket make sure first to empty it and then try to delete it.
+
+## Deploying CDK Default Sample App
+
+After bootstrapping the CDK environment, we can now deploy our default CDK app with this single command:
+```bash
+cdk deploy
+```
+
+This will provisions SQS and SNS in our AWS account.
+
+On your first run of the command you can see the alert message that shows what changes CDK is planning to do in your account and asks for your approval:
+```bash
+This deployment will make potentially sensitive changes according to your current security approval level (--require-approval broadening).
+Please confirm you intend to make the following modifications:
+
+IAM Statement Changes
+┌───┬────────────────────────────────┬────────┬─────────────────┬────────────────────────────────┬────────────────────────────────┐
+│   │ Resource                       │ Effect │ Action          │ Principal                      │ Condition                      │
+├───┼────────────────────────────────┼────────┼─────────────────┼────────────────────────────────┼────────────────────────────────┤
+│ + │ ${CdkWorkshopQueue.Arn}        │ Allow  │ sqs:SendMessage │ Service:sns.amazonaws.com      │ "ArnEquals": {                 │
+│   │                                │        │                 │                                │   "aws:SourceArn": "${CdkWorks │
+│   │                                │        │                 │                                │ hopTopic}"                     │
+│   │                                │        │                 │                                │ }                              │
+└───┴────────────────────────────────┴────────┴─────────────────┴────────────────────────────────┴────────────────────────────────┘
+(NOTE: There may be security-related changes not in this list. See https://github.com/aws/aws-cdk/issues/1299)
+
+Do you wish to deploy these changes (y/n)?
+```
+
+You can inspect your deployed stack and resources in AWS CloudFormation Console:
+
+![](./img/cfn_console_sns_sqs.png)
+
+From `CdWorkshopStack` you can find our deployed resources:
+
+![](./img/sqs_and_sns.png)
+
+If you need to delete all stack and it's resources, then run:
+```bash
+cdk destroy
 ```
