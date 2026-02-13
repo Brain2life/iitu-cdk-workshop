@@ -346,3 +346,281 @@ If you need to delete all stack and it's resources, then run:
 ```bash
 cdk destroy
 ```
+
+## Cleanup Sample App Code
+
+To clean up the code and see how CDK will handle it in action, delete the SQS and SNS definitions from `lib/cdk-workshop-stack.ts` file:
+```typescript
+import { Stack, StackProps } from 'aws-cdk-lib/core';
+import { Construct } from 'constructs';
+
+export class CdkWorkshopStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
+    super(scope, id, props);
+
+    // Nothing to see here, move along
+  }
+}
+```
+
+### `cdk diff`
+
+Now that we modified our stack's contents, we can ask the toolkit to show us the difference between our CDK app and what's currently deployed. This is a safe way to check what will happen once we run `cdk deploy` and is always a good practice:
+```bash
+cdk diff
+```
+
+In the CLI output you should what kind of actions CDK is going to do in your AWS account:
+```bash
+start: Building CdkWorkshopStack Template
+success: Built CdkWorkshopStack Template
+start: Publishing CdkWorkshopStack Template (current_account-current_region-5eb34042)
+success: Published CdkWorkshopStack Template (current_account-current_region-5eb34042)
+Hold on while we create a read-only change set to get a diff with accurate replacement information (use --no-change-set to use a less accurate but faster template-only diff)
+
+Stack CdkWorkshopStack
+IAM Statement Changes
+┌───┬─────────────────────────────────┬────────┬─────────────────┬───────────────────────────┬──────────────────────────────────────────────────┐
+│   │ Resource                        │ Effect │ Action          │ Principal                 │ Condition                                        │
+├───┼─────────────────────────────────┼────────┼─────────────────┼───────────────────────────┼──────────────────────────────────────────────────┤
+│ - │ ${CdkWorkshopQueue50D9D426.Arn} │ Allow  │ sqs:SendMessage │ Service:sns.amazonaws.com │ "ArnEquals": {                                   │
+│   │                                 │        │                 │                           │   "aws:SourceArn": "${CdkWorkshopTopicD368A42F}" │
+│   │                                 │        │                 │                           │ }                                                │
+└───┴─────────────────────────────────┴────────┴─────────────────┴───────────────────────────┴──────────────────────────────────────────────────┘
+(NOTE: There may be security-related changes not in this list. See https://github.com/aws/aws-cdk/issues/1299)
+
+Resources
+[-] AWS::SQS::Queue CdkWorkshopQueue50D9D426 destroy
+[-] AWS::SQS::QueuePolicy CdkWorkshopQueuePolicyAF2494A5 destroy
+[-] AWS::SNS::Topic CdkWorkshopTopicD368A42F destroy
+[-] AWS::SNS::Subscription CdkWorkshopTopicCdkWorkshopQueueSubscription88D211C7 destroy
+```
+
+Deploy the changes to delete the SQS and SNS stack components from your AWS account:
+```bash
+cdk deploy
+```
+
+## New Sample App with Lambda and API Gateway
+
+In this part, we will write CDK code to deploy **AWS Lambda function** and **API Gateway** in front of it to **expose a public URL endpoint**. Users will be able to hit any URL in the endpoint and they'll receive a heartwarming greeting from Lambda function.
+
+See the following scheme:
+
+![](./img/lambda_api_gateway_scheme.png)
+
+### Lambda Handler Code
+
+In AWS Lambda, the [**handler**](https://docs.aws.amazon.com/lambda/latest/dg/typescript-handler.html) is the specific method or function in your code that acts as the entry point for execution. When your Lambda function is triggered — whether by an API request, a file upload, or a timer — the runtime environment calls this specific function to begin processing the event.
+
+The handler typically processes two main inputs:
+
+* **Event:** A JSON-formatted document containing data from the triggering source (like the details of an HTTP request).
+* **Context:** An object that provides information about the invocation, function configuration, and execution environment.
+
+Think of it like the `main()` function in traditional programming, but specifically designed to wake up, do its job, and shut down once the event is handled.
+
+For more information, see [Decoding Lambda Handler Architecture: How AWS Lambda Functions Work](https://medium.com/@vigneshdayalan/decoding-lambda-handler-architecture-how-aws-lambda-functions-work-f9fd71ee75df).
+
+Now let's write our handler code for API requests:
+1. First, in the root of your project create a `lambda` directory:
+```bash
+cd cdk-workshop
+mkdir lambda
+```
+
+![](./img/lambda_dir.png)
+
+2. Next, we need to edit our `.gitignore` file and add `!lambda/*.js` to ensure that Git tracks all JS files in our newly created `lambda` directory:
+```bash
+*.js
+!lambda/*.js # Allow JavaScript files in the lambda directory
+!jest.config.js
+*.d.ts
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+```
+
+3. In `lambda` directory create `hello.js` file and add the following code:
+```javascript
+exports.handler = async function (event, context) {
+  console.log('Remaining time:', context.getRemainingTimeInMillis()); // Accessing the `context` object properties
+  console.log('request:', JSON.stringify(event, undefined, 2)); // Printing the details of the incoming request
+  
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'text/plain' },
+    body: `Hello, CDK! You've hit ${event.path}\n`,
+  };
+}
+```
+
+This is a simple Lambda function which returns the text **"Hello, CDK! You've hit [url path]"**. The function's output also includes the HTTP status code and HTTP headers. These are used by API Gateway to formulate the HTTP response to the user.
+
+### AWS Lambda Construct Library
+
+The AWS CDK is shipped with an extensive library of constructs called the **AWS Construct Library**. The construct library is divided into **modules**, one for each AWS service. For example, if you want to define an AWS Lambda function, we will need to use the AWS Lambda construct library.
+
+To learn more, browse the [AWS Construct Library](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-construct-library.html).
+
+In the AWS CDK, the **Construct Library** is organized like a set of building blocks, moving from raw cloud resources to complex, pre-packaged architectures.
+
+### CDK Modules (`aws-cdk-lib`)
+
+In CDK v2, the library is centralized into a single package called [`aws-cdk-lib`](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib-readme.html). This package is divided into **modules** based on AWS services.
+
+Each module follows a naming convention like `aws_s3`, `aws_lambda`, or `aws_iam`. When you need to create a bucket, you import from the S3 module:
+
+```typescript
+import { aws_s3 as s3 } from 'aws-cdk-lib';
+```
+
+### The Hierarchy of Constructs (L1, L2, L3)
+
+The core of the library is the [**Construct**](https://docs.aws.amazon.com/cdk/v2/guide/constructs.html), which is the basic unit of a CDK app. These are organized into three **"Levels" of abstraction**, often visualized as a pyramid where higher levels provide more convenience and lower levels provide more control.
+
+| Level | Name | Description | Example |
+| --- | --- | --- | --- |
+| **L1** | **CFN Resources** | Low-level, 1-to-1 mapping to CloudFormation. Names always start with `Cfn`. | `CfnBucket` |
+| **L2** | **Curated Constructs** | Higher-level "intent-based" APIs with sensible defaults and helper methods (like `.grantRead()`). | `Bucket` |
+| **L3** | **Patterns** | High-level "opinionated" combinations of multiple resources designed for a specific task. | `ApplicationLoadBalancedFargateService` |
+
+* **L1 (Low-level):** Use these when a new AWS feature isn't yet supported by higher levels. You have to define every single property manually.
+* **L2 (Recommended):** These are what you'll use 90% of the time. They handle security best practices and "boilerplate" glue logic for you.
+* **L3 (Patterns):** These are "architectures in a box." For example, an L3 pattern for a web server might create an ECS Cluster, a Load Balancer, and the necessary IAM roles all in one command.
+
+### The Composition Hierarchy
+
+Beyond the abstraction levels, CDK code is organized in a physical tree structure called the **Construct Tree**. This hierarchy dictates how resources are grouped and named.
+
+1. **App:** The root of your entire CDK project. It can contain one or more Stacks.
+2. **Stack:** The unit of deployment. Everything in a single Stack is deployed as one CloudFormation stack.
+3. **Construct:** Inside a Stack, you define your resources (L1, L2, or L3).
+4. **Resource:** The actual AWS component (e.g., an S3 Bucket or an EC2 Instance) that ends up in your account.
+
+![](./img/construct_library_hierarchy.png)
+
+For more information, see [The difference between a Stack and Construct in AWS CDK](https://stackoverflow.com/questions/67855703/the-difference-between-a-stack-and-construct-in-aws-cdk)
+
+## Adding AWS Lambda Function
+
+Now we can add our AWS Lambda function code definition that will process our incoming requests. Add the following code into `lib/cdk-workshop-stack.ts` file:
+```typescript
+// Import the core building blocks from the AWS CDK library
+import { Stack, StackProps } from "aws-cdk-lib"; 
+// Import specific classes needed to define a Lambda function
+import { Code, Function, Runtime } from "aws-cdk-lib/aws-lambda";
+// Import the base 'Construct' class (all CDK components are Constructs)
+import { Construct } from "constructs";
+
+// Define a new class that represents our CloudFormation Stack
+export class CdkWorkshopStack extends Stack {
+  
+  // The constructor is where we define our resources
+  // 'scope' is the parent (usually the App), 'id' is a unique name for this stack
+  constructor(scope: Construct, id: string, props?: StackProps) {
+    // Call the parent 'Stack' constructor to initialize the stack
+    super(scope, id, props);
+
+    /**
+     * Define an AWS Lambda Resource (an L2 Construct)
+     * 'this' refers to this stack (the scope)
+     * 'HelloHandler' is the logical ID inside CloudFormation
+     */
+    const hello = new Function(this, "HelloHandler", {
+      
+      // 1. Specifies the engine: Node.js version 22
+      runtime: Runtime.NODEJS_22_X, 
+      
+      // 2. Tells CDK where the actual code sits on your computer. 
+      // It will zip up everything inside the "lambda" folder and upload it.
+      code: Code.fromAsset("lambda"), 
+      
+      // 3. The 'entry point' in your code. 
+      // "hello.handler" means: Look in 'hello.js' for a function named 'handler'.
+      handler: "hello.handler", 
+    });
+  }
+}
+```
+
+## Class Signature in CDK Constructs
+
+In the AWS CDK, every single resource (from a simple S3 bucket to a massive VPC) is a **Construct**. To create these resources, the constructor always requires three specific arguments: `scope`, `id`, and `props`.
+
+Think of this signature as the **"Address and Identity"** system for your infrastructure.
+
+### 1. `scope` (The "Parent")
+
+The `scope` defines **where** this construct lives in the hierarchy.
+
+* In 99% of cases, you pass `this`, which tells the CDK: "This resource belongs to the current Stack or Class I am writing."
+* **Why we need it:** It allows the CDK to build a **Tree Structure**. This hierarchy is used to generate unique names for your resources in AWS (e.g., `MyStack-MyLambda-1A2B3C`).
+
+### 2. `id` (The "Local Name")
+
+The `id` is a string that must be **unique within its scope**.
+
+* If you have two Lambda functions in the same stack, they cannot both be named `"MyFunction"`.
+* **Why we need it:** This is the "Logical ID" in CloudFormation. It allows the CDK to track the resource. If you change the `id`, CDK will think you deleted the old resource and created a new one.
+
+### 3. `props` (The "Configuration")
+
+The `props` (Properties) is an object that defines **how** the resource should behave.
+
+* For a Lambda, this includes the `runtime`, `memory`, and `handler`.
+* **Why we need it:** It’s the "settings menu." Without it, every resource would just be a generic, empty shell with no specific configuration.
+
+### Why is this pattern used everywhere?
+
+This consistent signature enables **Composition**. Because every construct looks the same at the top level, you can nest them infinitely.
+
+For example, you can create a custom construct called `SecureBucket` that contains an S3 bucket and an IAM policy. Because your `SecureBucket` also uses `(scope, id, props)`, it can be used by others just as easily as a standard AWS resource.
+
+```typescript
+import { Construct } from 'constructs';
+import { aws_s3 as s3 } from 'aws-cdk-lib';
+
+export class SecureBucket extends Construct {
+  constructor(scope: Construct, id: string) {
+    // 1. We pass the scope and id to the base 'Construct' class
+    super(scope, id);
+
+    // 2. We define a real S3 Bucket INSIDE this custom construct
+    // Notice we use 'this' as the scope, so the bucket belongs to SecureBucket
+    new s3.Bucket(this, 'InternalBucket', {
+      encryption: s3.BucketEncryption.S3_MANAGED, // Forced encryption
+      enforceSSL: true,                           // Forced SSL
+      versioned: true,                            // Forced versioning
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // No public access
+    });
+  }
+}
+```
+Now, instead of writing 10 lines of security settings every time you need a bucket, you just do this in your main **Stack**:
+```typescript
+// In your main stack:
+new SecureBucket(this, 'MyFirstSafeBucket');
+new SecureBucket(this, 'MySecondSafeBucket');
+```
+
+## Deploying our Lambda Function
+
+To deploy our new Lambda function, first review the changes and then deploy:
+```bash
+cdk diff
+cdk deploy
+```
+
+To test our function, go to [AWS Lambda Console](https://console.aws.amazon.com/lambda/home#/functions) and from the **Test** tab under the **Function overview pane** create a new test event:
+
+![](./img/lambda_test.png)
+
+Hit **Test** button and wait for the execution to complete.
+
+In the output you should see the details of the request and the context object's remaining time property value:
+
+![](./img/lambda_test2.png)
