@@ -10,6 +10,7 @@ This repository represents AWS Cloud Development Kit (CDK) Immersion Day Worksho
 
 The given workshop shows how to develop CDK code in TypeScript to deploy AWS infrastructure components. Including:
 - [CDK Default Sample App deployment with SQS and SNS](https://github.com/Brain2life/iitu-cdk-workshop/tree/4fff4672272f6b2e2108e7e1d8886c0b32d6e6bf) - git commit `4fff467`
+- [Deploying AWS Lambda Function](https://github.com/Brain2life/iitu-cdk-workshop/tree/138fb38a08bf52f398aa92d4afc51eaf14fd0ab5) - git commit `138fb38`
 
 ## Materials
 
