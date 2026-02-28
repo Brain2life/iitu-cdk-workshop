@@ -625,3 +625,126 @@ Hit **Test** button and wait for the execution to complete.
 In the output you should see the details of the request and the context object's remaining time property value:
 
 ![](./img/lambda_test2.png)
+
+## CDK Watch Command
+
+Imagine that you need to update only Lambda code and in this case using `cdk deploy` command will create CloudFormation Template on every command run, load it into S3 bootstrap bucket, and then deploy it with CloudFormation Service. This will waste your time and increase the overall deployment time. To avoid this CDK has `cdk watch` parameter.
+
+But before that, let's measure our deployment time if we will use standard `cdk deploy` command. To do this change the `lambda/hello.js` code to display another response message:
+```typescript
+exports.handler = async function (event, context) {
+  console.log('Remaining time:', context.getRemainingTimeInMillis()); // Accessing the `context` object properties
+  console.log('request:', JSON.stringify(event, undefined, 2)); // Printing the details of the incoming request
+  
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'text/plain' },
+    body: `Good Morning, CDK! You've hit ${event.path}\n`,
+  };
+}
+```
+
+Save the file and deploy the change:
+```bash
+cdk deploy
+```
+
+From the output you should see something like this with values of total and deployment time:
+```bash
+ ✅  CdkWorkshopStack
+
+✨  Deployment time: 28.25s
+
+Stack ARN:
+arn:aws:cloudformation:eu-central-1:755618857275:stack/CdkWorkshopStack/789315c0-0805-11f1-8dfa-06da507b1e45
+
+✨  Total time: 35.15s
+```
+
+## Hotswap Deployments
+
+Another way to speed up our deployments is to use `--hotswap` flag for `deploy` parameter: `cdk deploy --hotswap`. The `cdk deploy --hotswap` command speeds up your development cycle by **bypassing a full CloudFormation stack update and directly updating the resource's code or configuration through directly calling service's API** (like a Lambda function's logic).
+
+> [!CAUTION]   
+> It is **intended only for development** because it can lead to "drift," where your actual AWS resources no longer perfectly match your CloudFormation template's state.
+
+To test the hotswap deployment change the Lambda message to `Good Afternoon, CDK!` in `lambda/hello.js` file and deploy with:
+```bash
+cdk deploy --hotswap
+```
+
+The output will look something like this:
+```bash
+✨  Synthesis time: 3.02s
+
+⚠️ The --hotswap flag deliberately introduces CloudFormation drift to speed up deployments
+⚠️ It should only be used for development - never use it for your production Stacks!
+
+CdkWorkshopStack: deploying...
+✨ hotswapping resources:
+   ✨ Lambda Function 'CdkWorkshopStack-HelloHandler2E4FBA4D-tEZTcXqG8YYe'
+✨ Lambda Function 'CdkWorkshopStack-HelloHandler2E4FBA4D-tEZTcXqG8YYe' hotswapped!
+
+ ✅  CdkWorkshopStack
+
+✨  Deployment time: 4.46s
+
+Stack ARN:
+arn:aws:cloudformation:REGION:ACCOUNT-ID:stack/CdkWorkshopStack/STACK-ID
+
+✨  Total time: 7.49s
+```
+
+As you can see the total time dramatically dropped from standard 35 seconds to nearly 8 seconds.
+
+From AWS Lambda Console you can see that out Lambda code has been changed with new greeting message:
+
+![](./img/lambda_watch.png)
+
+## CDK Watch
+
+The recommended and better alternative to hotswap deployments is to use `cdk watch` command. Under the hood, this command monitors your code and assets for changes and attempts to perform a deployment automatically when a change is detected. By default, `cdk watch` will use the `--hotswap` flag, which inspects the changes and determines if those changes can be hotswapped. Calling `cdk watch --no-hotswap` will disable the hotswap behavior.
+
+For more information, see [Increasing Development Speed with CDK Watch](https://aws.amazon.com/blogs/developer/increasing-development-speed-with-cdk-watch/)
+
+### `cdk.json`
+
+When the `cdk watch` command runs, the files that it observes are determined by the "`watch`" setting in the `cdk.json` file. It has two sub-keys, "`include`" and "`exclude`", each of which can be either a single string or an array of strings. Each entry is interpreted as a path relative to the location of the `cdk.json` file. Globs, both `*` and `**`, are allowed to be used.
+
+Your `cdk.json` file should look similar to this:
+```json
+{
+  "app": "npx ts-node --prefer-ts-exts bin/cdk-workshop.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/*.d.ts",
+      "tsconfig.json",
+      "package*.json",
+      "yarn.lock",
+      "node_modules",
+      "test"
+    ]
+  },
+  "context": {
+    // ...
+  }
+}
+```
+
+In our JSON file we removed the `"**/*.js"` from `exclude` list, as we want to observe changes in our `.js` files in `lambda` folder
+
+After removing the line, call `cdk watch` command. This will trigger an initial deployment and immediately begin observing the files we've specified in `cdk.json`.
+
+![](./img/cdk_watch_command_run.png)
+
+## References
+- [FreeCodeCamp: Learn Object-Oriented Programming in TypeScript](https://www.freecodecamp.org/news/learn-object-oriented-programming-in-typescript/)
+- [github.com/awslabs/aws-solutions-constructs](https://github.com/awslabs/aws-solutions-constructs)
+- [AWS L3 Patterns Library](https://aws.amazon.com/solutions/)
+- [DevTo Blog: Do You Really Know the Difference Between L1, L2, and L3 CDK Constructs?](https://dev.to/aws-builders/do-you-really-know-the-difference-between-l1-l2-and-l3-cdk-constructs-i43)
+- [The AWS CDK layer guide](https://docs.aws.amazon.com/prescriptive-guidance/latest/aws-cdk-layers/introduction.html)
+- [AWS Solutions Constructs](https://docs.aws.amazon.com/solutions/latest/constructs/welcome.html)
+- [YouTube: AWS CDK Do's and Dont's with Matthew Bonig](https://www.youtube.com/watch?v=V7ENMLvlzu8)
